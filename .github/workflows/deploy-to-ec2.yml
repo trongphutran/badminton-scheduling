@@ -1,0 +1,95 @@
+# This workflow will build a Java project with Maven, and cache/restore any dependencies to improve the workflow execution time
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-java-with-maven
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: Deploy Spring Boot to AWS EC2
+
+on:
+  push:
+    branches: [ "main" ] # run pipeline when having code push to main branch
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # Job 1: build Docker image and push to dockerhub
+  build-and-push:
+
+    runs-on: ubuntu-latest
+    
+    # run command in backend folder
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+    
+    # 1. Get source code
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. Setup Docker Buildx
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    # 3. Login to Docker Hub
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # 4. Build and Push Docker Image
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v6
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        push: true
+        tag: ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.PROJECT_NAME }}:latest
+        
+  # Job 2: SSH into EC2, pull image & run
+  deploy-to-ec2:
+    needs: build-and-push # wait job 1 done
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: SSH into EC2 and Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}        # IP Public EC2
+          username: ${{ secrets.EC2_USER }}  
+          key: ${{ secrets.EC2_SSH_KEY }}      # content in file .pem
+          port: ${{ secrets.EC2_PORT }}
+          script: |
+            # 1. Login Docker (if repo private)
+            echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+            
+            # 2. Pull latest image
+            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.PROJECT_NAME }}:latest
+            
+            # 3. Stop old container (add || true if run container on first time to avoid error)
+            docker stop badminton-scheduling-backend || true
+            docker rm badminton-scheduling-backend || true
+            
+            # 4. clean old image
+            docker image prune -f
+            
+            # 5. run new container with AWS RDS & Redis configurations
+            docker run -d \
+              --name badminton-scheduling-backend \
+              --restart unless-stopped \
+              -p 8080:8080 \
+              -e TZ=Asia/Ho_Chi_Minh \
+              -e SPRING_DATASOURCE_URL="${{ secrets.DB_URL }}" \
+              -e SPRING_DATASOURCE_USERNAME="${{ secrets.DB_USERNAME }}" \
+              -e SPRING_DATASOURCE_PASSWORD="${{ secrets.DB_PASSWORD }}" \
+              -e SPRING_JPA_HIBERNATE_DDL_AUTO=update \
+              -e SPRING_DATA_REDIS_HOST="${{ secrets.REDIS_HOST }}" \
+              -e SPRING_DATA_REDIS_PORT="${{ secrets.REDIS_PORT }}" \
+              -e SPRING_DATA_REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
+              -e SPRING_DATA_REDIS_SSL_ENABLED=true \
+              ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.PROJECT_NAME }}:latest
