@@ -1,0 +1,47 @@
+
+# Define the services to be run:
+services:
+  # create a service named 'postgres' (create a network for PostgreSQL database)
+  # use in local development (alter AWS RDS)
+  postgres:
+    image: postgres:17-alpine
+    container_name: local_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: phu
+      POSTGRES_PASSWORD: phu
+      POSTGRES_DB: badminton_scheduling_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # create a service named 'redis' (create a network for redis)
+  # use to store cache, session login
+  redis:
+    image: redis:8-alpine
+    container_name: local_redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+  # optional: backend service (only start if checking Docker build image run or not)
+  # In common, use IntelliJ to run project and debug
+
+#  backend:
+#    build: .
+#    container_name: local_backend
+#    ports:
+#      - "8080:8080"
+#    environment:
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/badminton_db
+#      SPRING_DATASOURCE_USERNAME: phu
+#      SPRING_DATASOURCE_PASSWORD: phu
+#    depends_on:
+#      - postgres
+#      - redis
+
+
+volumes:
+  postgres_data:
+
