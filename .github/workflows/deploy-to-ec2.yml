@@ -57,6 +57,29 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+      # 1. Get Public IP of github actions
+      - name: Get GitHub Runner IP
+        id: get-ip
+        run: echo "ipv4=$(curl -s http://checkip.amazonaws.com)" >> $GITHUB_OUTPUT
+      
+      # 2. Log in to AWS
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # 3. Open Security Group (callback step get-ip)
+      - name: Allow Runner IP in EC2 Security Group
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32
+
+      # 4. SSH into EC2 and deploy
       - name: SSH into EC2 and Deploy
         uses: appleboy/ssh-action@master
         with:
@@ -93,3 +116,14 @@ jobs:
               -e SPRING_DATA_REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
               -e SPRING_DATA_REDIS_SSL_ENABLED=true \
               ${{ secrets.DOCKERHUB_USERNAME }}/${{ vars.PROJECT_NAME }}:latest
+
+    # 5. Withdraw that IP's rights from the Security Group
+      # if: always() ensure SSH port always close regardless of error
+      - name: Revoke Runner IP from EC2 Security Group
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp \
+            --port 22 \
+            --cidr ${{ steps.get-ip.outputs.ipv4 }}/32
