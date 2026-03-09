@@ -110,7 +110,7 @@ jobs:
               -e SPRING_DATASOURCE_URL="${{ secrets.DB_URL }}" \
               -e SPRING_DATASOURCE_USERNAME="${{ secrets.DB_USERNAME }}" \
               -e SPRING_DATASOURCE_PASSWORD="${{ secrets.DB_PASSWORD }}" \
-              -e SPRING_JPA_HIBERNATE_DDL_AUTO=update \
+              -e SPRING_JPA_HIBERNATE_DDL_AUTO=validate \
               -e SPRING_DATA_REDIS_HOST="${{ secrets.REDIS_HOST }}" \
               -e SPRING_DATA_REDIS_PORT="${{ secrets.REDIS_PORT }}" \
               -e SPRING_DATA_REDIS_PASSWORD="${{ secrets.REDIS_PASSWORD }}" \
